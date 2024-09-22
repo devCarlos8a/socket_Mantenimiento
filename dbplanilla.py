@@ -1,5 +1,5 @@
 def obtener_usuarios_validos():
-    # Listado de usuarios
+    # Lista de usuarios validados para usarl el sistema
     usuarios = {
         "12345678": "Juan Pérez",
         "87654321": "María García",
