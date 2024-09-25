@@ -1,56 +1,100 @@
 import socket
+import threading
 from usuarios import validacion_planilla
 
 # variables para direccionamiento del servidor
 direccion_del_Servidor = 'localhost'
 puerto_Servidor = 8080
 
-# uso de socket: Objeto mi_socket y metodos bind (para usar el metodo de conexion) y socket.listen para la cantidad de intentos de conexion
+# uso de socket: Objeto mi_socket y metodos bind (para usar el metodo de conexion) y socket.listen para la cantidad de tiempo de espera de la conexion
 mi_socket = socket.socket()
 mi_socket.bind((direccion_del_Servidor, puerto_Servidor))
 mi_socket.listen(5)
-print(f"Servidor iniciando sesión en --> {direccion_del_Servidor} en el puerto --> {puerto_Servidor}")
+print(f"Servidor iniciado en {direccion_del_Servidor}:{puerto_Servidor}")
 
-# While que permite hacer el bucle que valida las conexiones
-while True:
-    conexion, direccion = mi_socket.accept()
-    print(f"Inicio de sesión desde el servidor --> {direccion}")
+#conteo de clientes
+clientes_activos = 0
+lock = threading.Lock()
 
-    i = 0  # Para controlar los intentos de validación
-    usuario_valido = False  # Uso de bandera para saber si el usuario es válido
+# implementación de hilos para permitir conexión de varios clientes al tiempo
+def manejar_cliente(conexion, direccion):
+    global clientes_activos
+    print(f"Cliente conectado desde {direccion}")
 
+    # Iterador para los intentos de logueo del cliente
+    i = 0  
+    usuario_valido = False  # Esta bandera nos dirá si el cliente es válido o no
+
+    #validacion de i
     while i < 3 and not usuario_valido:
-        # recepcion de datos del cliente
+        # Recibimos el documento del cliente
         documento = conexion.recv(1024).decode('utf-8')
         print(f"Validando la información suministrada... El documento '{documento}' lo estamos verificando en nuestra base de datos.")
 
-        # Validacion del usuario en la dbplanilla.py
+        # Validación del usuario en la dbplanilla.py
         nombre_usuario = validacion_planilla(documento)
-        if nombre_usuario:  # Cambiado de booleano a nombre de usuario
+        if nombre_usuario:
             usuario_valido = True
-            conexion.send(f"Sesión abierta. Ahora puedes salir.".encode('utf-8'))
+            conexion.send("Sesión abierta. Puedes escribir 'salir' para terminar.".encode('utf-8'))
             print(f"Usuario válido: {nombre_usuario}. Sesión iniciada.")
         else:
             i += 1
-            if i < 3: # conteo regresivo de los intentos, al tercer intento se cierra la conexión
-                conexion.send(f"Documento no válido. Intento {i}/3. Por favor, intente de nuevo.".encode('utf-8'))
+            if i < 3:
+                conexion.send(f"Documento no válido. Intento {i}/3. Intenta de nuevo.".encode('utf-8'))
             else:
-                conexion.send("Ha superado el número máximo de intentos. Sesión cerrada.".encode('utf-8'))
-                print(f"El cliente {direccion} ha superado los intentos permitidos. Conexión cerrada.")
+                conexion.send("Has agotado tus intentos. Sesión cerrada.".encode('utf-8'))
+                print(f"Cliente {direccion} ha agotado sus intentos. Conexión cerrada.")
                 conexion.close()
-                break
 
-    # Si el usuario es válidado, la conexion se mantiene hasta que el usuario escriba salir
+                # restriccion para cerrar la sesion cuando no hayan clientes.
+                with lock:
+                    clientes_activos -= 1
+                return
+
+    # Si el usuario es validado, la conexión se mantiene hasta que el usuario escriba "salir"
     if usuario_valido:
         while True:
             mensaje = conexion.recv(1024).decode('utf-8')
-            if not mensaje or mensaje.lower() == "salir":
+            if not mensaje or mensaje.lower() == "salir":  # Si el cliente quiere salir
                 conexion.send("Sesión cerrada. Adiós.".encode('utf-8'))
                 print(f"El cliente {direccion} ha cerrado la sesión.")
                 break
             else:
-                conexion.send(f"{mensaje}".encode('utf-8'))
-                print(f"Mensaje recibido de {direccion}: {mensaje}")
+                conexion.send(f"Mensaje recibido: {mensaje}".encode('utf-8'))
+                print(f"Mensaje de {direccion}: {mensaje}")
 
-    # cierre de la conexion
+# fin de la conexión
     conexion.close()
+
+    # conteo de clientes hasta cerrar la sesion cuando ya no haya clientes conectados.
+    with lock:
+        clientes_activos -= 1
+        print(f"Clientes activos ahora: {clientes_activos}")
+    if clientes_activos == 0:
+        print("Todos los clientes se han desconectado. Cerrando servidor...")
+        mi_socket.close()
+
+# Funcion para nuevas conexiones
+def inicio_server():
+    global clientes_activos
+    while True:
+        try:
+            conexion, direccion = mi_socket.accept()
+        except OSError:
+            print("El servidor no está disponible en estos momentos, intenta mas tarde.")
+            break
+
+        print(f"Conexión aceptada de {direccion}")
+
+        # conteo de clientes para nuevas conexiones
+        with lock:
+            clientes_activos += 1
+            print(f"Clientes activos ahora: {clientes_activos}")
+
+        # Hilos "threading" para separar las conexiones clientes nuevos
+        hilo_cliente = threading.Thread(target=manejar_cliente, args=(conexion, direccion))
+        hilo_cliente.start()
+
+# Funcion para iniciar el servidor si se ejecuta.
+if __name__ == "__main__":
+    inicio_server()
