@@ -69,7 +69,7 @@ def manejar_cliente(conexion, direccion):
     # conteo de clientes hasta cerrar la sesion cuando ya no haya clientes conectados.
     with lock:
         clientes_activos -= 1
-        print(f"Clientes activos ahora: {clientes_activos}")
+        print(f"Clientes activos: {clientes_activos}")
     if clientes_activos == 0:
         print("Todos los clientes se han desconectado. Cerrando servidor...")
         mi_socket.close()
@@ -89,7 +89,7 @@ def inicio_server():
         # conteo de clientes para nuevas conexiones
         with lock:
             clientes_activos += 1
-            print(f"Clientes activos ahora: {clientes_activos}")
+            print(f"Clientes activos: {clientes_activos}")
 
         # Hilos "threading" para separar las conexiones clientes nuevos
         hilo_cliente = threading.Thread(target=manejar_cliente, args=(conexion, direccion))
